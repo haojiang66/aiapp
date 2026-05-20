@@ -1,6 +1,6 @@
 # 运行 Streamlit 演示应用：pip install -r requirements-app.txt
 ultralytics>=8.0.0
-opencv-python>=4.8.0
+opencv-python-headless>=4.8.0
 streamlit>=1.28.0
 pillow>=10.0.0
 numpy>=1.24.0
