@@ -1,0 +1,18 @@
+path: E:\aiapp\aiapp\Macroinvertebrate-Detection-YOLOv8-main\data
+train: train/images
+val: valid/images
+nc: 13
+names:
+  0: bugs_and_beetles  # 蝽或甲虫
+  1: caddisflies  # 石蛾幼虫（石蚕）
+  2: crabs_and_shrimps  # 蟹与虾
+  3: damselflies  # 豆娘
+  4: dragonflies  # 蜻蜓
+  5: flat_worms  # 扁形虫
+  6: leeches  # 水蛭
+  7: minnow_mayflies  # 小蜉蝣
+  8: other_mayflies  # 其他蜉蝣
+  9: snails_clams_mussels  # 螺、蚌、贻贝
+  10: stoneflies  # 石蛾
+  11: true_flies  # 真蝇
+  12: worms  # 蠕虫

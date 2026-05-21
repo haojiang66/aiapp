@@ -1,0 +1,67 @@
+[
+  {
+    "id": 0,
+    "name_en": "bugs_and_beetles",
+    "name_zh": "蝽或甲虫"
+  },
+  {
+    "id": 1,
+    "name_en": "caddisflies",
+    "name_zh": "石蛾幼虫（石蚕）"
+  },
+  {
+    "id": 2,
+    "name_en": "crabs_and_shrimps",
+    "name_zh": "蟹与虾"
+  },
+  {
+    "id": 3,
+    "name_en": "damselflies",
+    "name_zh": "豆娘"
+  },
+  {
+    "id": 4,
+    "name_en": "dragonflies",
+    "name_zh": "蜻蜓"
+  },
+  {
+    "id": 5,
+    "name_en": "flat_worms",
+    "name_zh": "扁形虫"
+  },
+  {
+    "id": 6,
+    "name_en": "leeches",
+    "name_zh": "水蛭"
+  },
+  {
+    "id": 7,
+    "name_en": "minnow_mayflies",
+    "name_zh": "小蜉蝣"
+  },
+  {
+    "id": 8,
+    "name_en": "other_mayflies",
+    "name_zh": "其他蜉蝣"
+  },
+  {
+    "id": 9,
+    "name_en": "snails_clams_mussels",
+    "name_zh": "螺、蚌、贻贝"
+  },
+  {
+    "id": 10,
+    "name_en": "stoneflies",
+    "name_zh": "石蛾"
+  },
+  {
+    "id": 11,
+    "name_en": "true_flies",
+    "name_zh": "真蝇"
+  },
+  {
+    "id": 12,
+    "name_en": "worms",
+    "name_zh": "蠕虫"
+  }
+]

@@ -1,0 +1,5 @@
+# 训练底栖生物模型: pip install -r requirements-train.txt -r requirements-dataload.txt
+# RTX 50 系 (5070 等) 请再运行 install_gpu_torch.ps1 或:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+ultralytics>=8.0.0
+opencv-python-headless>=4.8.0

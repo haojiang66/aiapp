@@ -1,0 +1,18 @@
+path: E:\aiapp\aiapp\Macroinvertebrate-Detection-YOLOv8-main\yolo_detect
+train: train/images
+val: valid/images
+nc: 13
+names:
+  0: bugs_and_beetles
+  1: caddisflies
+  2: crabs_and_shrimps
+  3: damselflies
+  4: dragonflies
+  5: flat_worms
+  6: leeches
+  7: minnow_mayflies
+  8: other_mayflies
+  9: snails_clams_mussels
+  10: stoneflies
+  11: true_flies
+  12: worms
