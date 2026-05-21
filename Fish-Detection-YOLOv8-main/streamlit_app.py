@@ -1,17 +1,20 @@
 """
-水生生物检测应用：可在浏览器中选择「鱼类」或「底栖动物」模型进行识别。
+水生生物检测应用：鱼类 / 底栖动物切换；支持上传文件或剪贴板图片。
 
 运行（在 Fish-Detection-YOLOv8-main 目录下）:
   pip install -r requirements-app.txt
   streamlit run streamlit_app.py
 """
 
+import base64
+import io
 from pathlib import Path
 
 import cv2
 import numpy as np
 import streamlit as st
-from PIL import Image
+import streamlit.components.v1 as components
+from PIL import Image, ImageGrab
 from ultralytics import YOLO
 
 from fish_info import FISH_INFO, get_fish_info
@@ -112,6 +115,94 @@ def load_model(weights_path: str):
     return YOLO(weights_path)
 
 
+def read_system_clipboard() -> Image.Image | None:
+    """读取本机系统剪贴板中的图片（Windows 截图 / 复制图片后有效）。"""
+    data = ImageGrab.grabclipboard()
+    if data is None:
+        return None
+    if isinstance(data, list):
+        return Image.open(data[0]).convert("RGB")
+    return data.convert("RGB")
+
+
+def decode_data_url(data_url: str) -> Image.Image:
+    _, b64 = data_url.split(",", 1)
+    return Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+
+
+def browser_paste_widget() -> str | None:
+    """浏览器内粘贴区域：聚焦后 Ctrl+V，将图片以 data URL 回传。"""
+    return components.html(
+        """
+        <div id="paste-area" tabindex="0"
+             style="border:2px dashed #6c757d;padding:28px;text-align:center;
+                    border-radius:8px;outline:none;cursor:text;background:#fafafa;">
+          点击此处聚焦，然后按 <b>Ctrl+V</b> 粘贴图片
+        </div>
+        <script>
+        const area = document.getElementById('paste-area');
+        area.addEventListener('paste', (event) => {
+          const items = event.clipboardData ? event.clipboardData.items : [];
+          for (const item of items) {
+            if (item.type && item.type.startsWith('image/')) {
+              const file = item.getAsFile();
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                window.parent.postMessage(
+                  {type: 'streamlit:setComponentValue', value: e.target.result},
+                  '*'
+                );
+              };
+              reader.readAsDataURL(file);
+              event.preventDefault();
+              area.innerHTML = '<b style="color:#198754">已粘贴图片</b>，稍候自动识别…';
+              break;
+            }
+          }
+        });
+        </script>
+        """,
+        height=130,
+    )
+
+
+def load_input_image(input_mode: str) -> tuple[Image.Image | None, str]:
+    """根据输入方式返回 RGB 图片与来源说明。"""
+    if input_mode == "上传文件":
+        uploaded = st.file_uploader(
+            "选择图片",
+            type=["jpg", "jpeg", "png", "webp", "bmp"],
+            key="file_uploader",
+        )
+        if uploaded is not None:
+            return Image.open(uploaded).convert("RGB"), "上传文件"
+        return None, ""
+
+    st.caption("先复制或截图（Win+Shift+S），再任选一种方式读取。")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("读取系统剪贴板", type="primary", use_container_width=True):
+            img = read_system_clipboard()
+            if img is None:
+                st.warning("剪贴板中没有图片。请先截图或复制一张图。")
+            else:
+                st.session_state["clipboard_image"] = img
+                st.success("已从系统剪贴板读取。")
+    with col_b:
+        if st.button("清除剪贴板图片", use_container_width=True):
+            st.session_state.pop("clipboard_image", None)
+
+    pasted = browser_paste_widget()
+    if isinstance(pasted, str) and pasted.startswith("data:image"):
+        st.session_state["clipboard_image"] = decode_data_url(pasted)
+
+    img = st.session_state.get("clipboard_image")
+    if img is not None:
+        st.image(img, caption="当前剪贴板图片", use_container_width=True)
+        return img, "剪贴板"
+    return None, ""
+
+
 def show_detections(results, get_info, names):
     boxes = results[0].boxes
     if boxes is not None and len(boxes) > 0:
@@ -165,17 +256,28 @@ def main():
         return
 
     conf = st.sidebar.slider("置信度阈值", 0.05, 0.95, 0.25, 0.05)
-    uploaded = st.file_uploader("选择图片", type=["jpg", "jpeg", "png", "webp", "bmp"])
+
+    st.subheader("输入图片")
+    input_mode = st.radio(
+        "图片来源",
+        ["上传文件", "剪贴板"],
+        horizontal=True,
+        help="剪贴板：本机运行 Streamlit 时可用系统读取；也可在页面粘贴区 Ctrl+V。",
+    )
 
     model = load_model(str(cfg["weights"]))
+    image, source = load_input_image(input_mode)
 
-    if uploaded is not None:
-        image = Image.open(uploaded).convert("RGB")
+    if image is not None:
         arr = np.array(image)
         results = model(arr, conf=conf, verbose=False)
         plotted = results[0].plot()
         plotted_rgb = cv2.cvtColor(plotted, cv2.COLOR_BGR2RGB)
-        st.image(plotted_rgb, caption=f"检测结果 · {species_key}", use_container_width=True)
+        st.image(
+            plotted_rgb,
+            caption=f"检测结果 · {species_key} · {source}",
+            use_container_width=True,
+        )
         show_detections(results, cfg["get_info"], results[0].names)
 
     with st.expander(cfg["catalog_title"]):
