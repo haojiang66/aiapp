@@ -7,6 +7,7 @@
 """
 
 import base64
+import hashlib
 import io
 from pathlib import Path
 
@@ -130,39 +131,91 @@ def decode_data_url(data_url: str) -> Image.Image:
     return Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
 
 
-def browser_paste_widget() -> str | None:
-    """浏览器内粘贴区域：聚焦后 Ctrl+V，将图片以 data URL 回传。"""
+def image_from_paste_value(raw) -> Image.Image | None:
+    """解析 components.html 回传的粘贴内容（bytes 或 data URL）。"""
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        return Image.open(io.BytesIO(raw)).convert("RGB")
+    if isinstance(raw, str) and raw.startswith("data:image"):
+        return decode_data_url(raw)
+    return None
+
+
+def paste_value_signature(raw) -> str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        return hashlib.md5(raw).hexdigest()
+    if isinstance(raw, str):
+        return hashlib.md5(raw.encode("utf-8", errors="ignore")).hexdigest()
+    return None
+
+
+def send_paste_to_streamlit_js() -> str:
+    return """
+    function sendPasteToStreamlit(bytes) {
+      if (typeof Streamlit !== 'undefined' && Streamlit.setComponentValue) {
+        Streamlit.setComponentValue(bytes);
+        return true;
+      }
+      if (window.parent.Streamlit && window.parent.Streamlit.setComponentValue) {
+        window.parent.Streamlit.setComponentValue(bytes);
+        return true;
+      }
+      window.parent.postMessage(
+        {type: 'streamlit:setComponentValue', value: bytes},
+        '*'
+      );
+      return true;
+    }
+    """
+
+
+def browser_paste_widget(widget_key: str) -> bytes | str | None:
+    """浏览器内粘贴：聚焦后 Ctrl+V，以二进制回传（比 data URL 更稳定）。"""
     return components.html(
-        """
+        f"""
         <div id="paste-area" tabindex="0"
-             style="border:2px dashed #6c757d;padding:28px;text-align:center;
+             style="border:2px dashed #6c757d;padding:24px;text-align:center;
                     border-radius:8px;outline:none;cursor:text;background:#fafafa;">
           点击此处聚焦，然后按 <b>Ctrl+V</b> 粘贴图片
         </div>
+        <p id="paste-hint" style="text-align:center;color:#6c757d;font-size:13px;margin:8px 0 0;">
+          粘贴成功后页面会自动刷新并开始识别
+        </p>
         <script>
+        {send_paste_to_streamlit_js()}
         const area = document.getElementById('paste-area');
-        area.addEventListener('paste', (event) => {
+        const hint = document.getElementById('paste-hint');
+        area.addEventListener('paste', (event) => {{
           const items = event.clipboardData ? event.clipboardData.items : [];
-          for (const item of items) {
-            if (item.type && item.type.startsWith('image/')) {
+          for (const item of items) {{
+            if (item.type && item.type.startsWith('image/')) {{
+              event.preventDefault();
               const file = item.getAsFile();
               const reader = new FileReader();
-              reader.onload = (e) => {
-                window.parent.postMessage(
-                  {type: 'streamlit:setComponentValue', value: e.target.result},
-                  '*'
-                );
-              };
-              reader.readAsDataURL(file);
-              event.preventDefault();
-              area.innerHTML = '<b style="color:#198754">已粘贴图片</b>，稍候自动识别…';
+              reader.onload = (e) => {{
+                const bytes = new Uint8Array(e.target.result);
+                if (!sendPasteToStreamlit(bytes)) {{
+                  hint.textContent = '无法连接 Streamlit，请改用左侧「读取系统剪贴板」';
+                  return;
+                }}
+                hint.textContent = '已收到图片，正在刷新页面…';
+                area.innerHTML = '<b style="color:#198754">已粘贴</b>，正在识别…';
+              }};
+              reader.onerror = () => {{
+                hint.textContent = '读取图片失败，请重试或改用系统剪贴板按钮';
+              }};
+              reader.readAsArrayBuffer(file);
               break;
-            }
-          }
-        });
+            }}
+          }}
+        }});
         </script>
         """,
-        height=130,
+        height=150,
+        key=widget_key,
     )
 
 
@@ -178,7 +231,10 @@ def load_input_image(input_mode: str) -> tuple[Image.Image | None, str]:
             return Image.open(uploaded).convert("RGB"), "上传文件"
         return None, ""
 
-    st.caption("先复制或截图（Win+Shift+S），再任选一种方式读取。")
+    st.caption(
+        "推荐：截图或复制图片后，点 **「读取系统剪贴板」**（本机运行 Streamlit 时最稳）。"
+        " 也可在下方框内 Ctrl+V。"
+    )
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("读取系统剪贴板", type="primary", use_container_width=True):
@@ -187,14 +243,28 @@ def load_input_image(input_mode: str) -> tuple[Image.Image | None, str]:
                 st.warning("剪贴板中没有图片。请先截图或复制一张图。")
             else:
                 st.session_state["clipboard_image"] = img
+                st.session_state.pop("_paste_sig", None)
                 st.success("已从系统剪贴板读取。")
     with col_b:
         if st.button("清除剪贴板图片", use_container_width=True):
             st.session_state.pop("clipboard_image", None)
+            st.session_state.pop("_paste_sig", None)
+            st.session_state["paste_widget_key"] = (
+                st.session_state.get("paste_widget_key", 0) + 1
+            )
 
-    pasted = browser_paste_widget()
-    if isinstance(pasted, str) and pasted.startswith("data:image"):
-        st.session_state["clipboard_image"] = decode_data_url(pasted)
+    widget_key = f"paste_{st.session_state.get('paste_widget_key', 0)}"
+    pasted = browser_paste_widget(widget_key)
+    sig = paste_value_signature(pasted)
+    if sig is not None and sig != st.session_state.get("_paste_sig"):
+        new_img = image_from_paste_value(pasted)
+        if new_img is not None:
+            st.session_state["clipboard_image"] = new_img
+            st.session_state["_paste_sig"] = sig
+            st.session_state["paste_widget_key"] = (
+                st.session_state.get("paste_widget_key", 0) + 1
+            )
+            st.rerun()
 
     img = st.session_state.get("clipboard_image")
     if img is not None:
