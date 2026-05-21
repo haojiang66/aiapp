@@ -9,6 +9,7 @@
 import base64
 import hashlib
 import io
+import os
 from pathlib import Path
 
 import cv2
@@ -22,6 +23,13 @@ from fish_info import FISH_INFO, get_fish_info
 
 APP_ROOT = Path(__file__).resolve().parent
 MACRO_ROOT = APP_ROOT.parent / "Macroinvertebrate-Detection-YOLOv8-main"
+
+
+def is_streamlit_cloud() -> bool:
+    """Streamlit Community Cloud 等远程环境（无本机桌面剪贴板）。"""
+    if os.environ.get("STREAMLIT_RUNTIME_ENV") == "cloud":
+        return True
+    return Path("/mount/src").is_dir()
 
 MACRO_INFO = {
     "bugs_and_beetles": {
@@ -117,8 +125,11 @@ def load_model(weights_path: str):
 
 
 def read_system_clipboard() -> Image.Image | None:
-    """读取本机系统剪贴板中的图片（Windows 截图 / 复制图片后有效）。"""
-    data = ImageGrab.grabclipboard()
+    """读取本机系统剪贴板中的图片（仅本地桌面环境有效）。"""
+    try:
+        data = ImageGrab.grabclipboard()
+    except Exception:
+        return None
     if data is None:
         return None
     if isinstance(data, list):
@@ -174,8 +185,9 @@ def send_paste_to_streamlit_js() -> str:
 
 def browser_paste_widget(widget_key: str) -> bytes | str | None:
     """浏览器内粘贴：聚焦后 Ctrl+V，以二进制回传（比 data URL 更稳定）。"""
+    # components.html 不支持 key=；用 HTML 注释区分实例以便重置
     return components.html(
-        f"""
+        f"""<!-- {widget_key} -->
         <div id="paste-area" tabindex="0"
              style="border:2px dashed #6c757d;padding:24px;text-align:center;
                     border-radius:8px;outline:none;cursor:text;background:#fafafa;">
@@ -215,7 +227,6 @@ def browser_paste_widget(widget_key: str) -> bytes | str | None:
         </script>
         """,
         height=150,
-        key=widget_key,
     )
 
 
@@ -231,13 +242,25 @@ def load_input_image(input_mode: str) -> tuple[Image.Image | None, str]:
             return Image.open(uploaded).convert("RGB"), "上传文件"
         return None, ""
 
-    st.caption(
-        "推荐：截图或复制图片后，点 **「读取系统剪贴板」**（本机运行 Streamlit 时最稳）。"
-        " 也可在下方框内 Ctrl+V。"
-    )
+    on_cloud = is_streamlit_cloud()
+    if on_cloud:
+        st.caption("在线版：在下方框内点击后 **Ctrl+V** 粘贴图片（浏览器内粘贴）。")
+    else:
+        st.caption(
+            "推荐：截图或复制后点 **「读取系统剪贴板」**；也可在下方框内 **Ctrl+V**。"
+        )
+
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("读取系统剪贴板", type="primary", use_container_width=True):
+        if on_cloud:
+            st.button(
+                "读取系统剪贴板",
+                type="primary",
+                use_container_width=True,
+                disabled=True,
+                help="在线部署无法访问您电脑的系统剪贴板，请用下方 Ctrl+V。",
+            )
+        elif st.button("读取系统剪贴板", type="primary", use_container_width=True):
             img = read_system_clipboard()
             if img is None:
                 st.warning("剪贴板中没有图片。请先截图或复制一张图。")
@@ -332,7 +355,7 @@ def main():
         "图片来源",
         ["上传文件", "剪贴板"],
         horizontal=True,
-        help="剪贴板：本机运行 Streamlit 时可用系统读取；也可在页面粘贴区 Ctrl+V。",
+        help="剪贴板：本机可点「读取系统剪贴板」；在线版请在粘贴区 Ctrl+V。",
     )
 
     model = load_model(str(cfg["weights"]))
