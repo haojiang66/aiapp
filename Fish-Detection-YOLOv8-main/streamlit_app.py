@@ -13,6 +13,8 @@ import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
 
+from fish_info import FISH_INFO, get_fish_info
+
 WEIGHTS = Path(__file__).resolve().parent / "runs" / "detect" / "train" / "weights" / "best.pt"
 
 
@@ -49,15 +51,35 @@ def main():
         names = results[0].names
         boxes = results[0].boxes
         if boxes is not None and len(boxes) > 0:
-            st.subheader("本次检测到的类别")
+            st.subheader("检测结果")
             cls_ids = boxes.cls.int().tolist()
             confs = boxes.conf.tolist()
-            lines = []
-            for i, (cid, c) in enumerate(zip(cls_ids, confs)):
-                lines.append(f"{i + 1}. {names[cid]} — {c:.2f}")
-            st.text("\n".join(lines))
+
+            for i, (cid, score) in enumerate(zip(cls_ids, confs)):
+                en_name = names[cid]
+                info = get_fish_info(en_name)
+                st.markdown(
+                    f"**{i + 1}. {info['zh_name']}**  \n"
+                    f"模型类别：`{en_name}` · 置信度 **{score:.2f}**"
+                )
+                st.caption(info["intro"])
+                if i < len(cls_ids) - 1:
+                    st.divider()
+
+            seen = sorted({names[cid] for cid in cls_ids})
+            if len(seen) > 1:
+                with st.expander("本图涉及类别一览（去重）"):
+                    for en_name in seen:
+                        info = get_fish_info(en_name)
+                        st.markdown(f"**{info['zh_name']}**（`{en_name}`）")
+                        st.caption(info["intro"])
         else:
             st.info("未检测到目标，可调低置信度阈值或换一张图。")
+
+    with st.expander("全部可识别鱼类（中文名与简介）"):
+        for en_name, info in FISH_INFO.items():
+            st.markdown(f"**{info['zh_name']}** · `{en_name}`")
+            st.caption(info["intro"])
 
 
 if __name__ == "__main__":
